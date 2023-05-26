@@ -143,7 +143,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
     struct section *text = &sections[text_shndx];
 
     /* May need to modify text for relocations, so make a copy */
-    text_copy = malloc(text->size);
+    text_copy = vm->zmalloc_fn(vm->zmalloc_cookie, text->size);
     if (!text_copy) {
         *errmsg = ubpf_error("failed to allocate memory");
         goto error;
@@ -218,10 +218,10 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
     }
 
     int rv = ubpf_load(vm, text_copy, sections[text_shndx].size, errmsg);
-    free(text_copy);
+    vm->free_fn(text_copy);
     return rv;
 
 error:
-    free(text_copy);
+    vm->free_fn(text_copy);
     return -1;
 }

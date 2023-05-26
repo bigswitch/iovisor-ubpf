@@ -45,20 +45,28 @@ void ubpf_set_error_print(struct ubpf_vm *vm, int (*error_printf)(FILE* stream, 
 }
 
 struct ubpf_vm *
-ubpf_create(void)
+ubpf_create_ext(void *zmalloc_cookie,
+                ubpf_zmalloc_fn zmalloc_fn,
+                ubpf_free_fn free_fn)
 {
-    struct ubpf_vm *vm = calloc(1, sizeof(*vm));
+    struct ubpf_vm *vm = zmalloc_fn(zmalloc_cookie, sizeof(*vm));
     if (vm == NULL) {
         return NULL;
     }
 
-    vm->ext_funcs = calloc(MAX_EXT_FUNCS, sizeof(*vm->ext_funcs));
+    vm->zmalloc_cookie = zmalloc_cookie;
+    vm->zmalloc_fn = zmalloc_fn;
+    vm->free_fn = free_fn;
+
+    vm->ext_funcs = zmalloc_fn(zmalloc_cookie,
+                               MAX_EXT_FUNCS*sizeof(*vm->ext_funcs));
     if (vm->ext_funcs == NULL) {
         ubpf_destroy(vm);
         return NULL;
     }
 
-    vm->ext_func_names = calloc(MAX_EXT_FUNCS, sizeof(*vm->ext_func_names));
+    vm->ext_func_names = zmalloc_fn(zmalloc_cookie,
+                                    MAX_EXT_FUNCS*sizeof(*vm->ext_func_names));
     if (vm->ext_func_names == NULL) {
         ubpf_destroy(vm);
         return NULL;
@@ -71,16 +79,42 @@ ubpf_create(void)
     return vm;
 }
 
+
+static void *
+default_zmalloc(void * cookie, size_t size)
+{
+    return calloc(1, size);
+}
+
+static void *
+default_free(void *ptr)
+{
+    free(ptr);
+    return NULL;
+}
+
+struct ubpf_vm *
+ubpf_create(void)
+{
+    return ubpf_create_ext(NULL, default_zmalloc, default_free);
+}
+
 void
 ubpf_destroy(struct ubpf_vm *vm)
 {
     if (vm->jitted) {
         munmap(vm->jitted, vm->jitted_size);
     }
-    free(vm->insts);
-    free(vm->ext_funcs);
-    free(vm->ext_func_names);
-    free(vm);
+    if (vm->insts) {
+        vm->free_fn(vm->insts);
+    }
+    if (vm->ext_funcs) {
+        vm->free_fn(vm->ext_funcs);
+    }
+    if (vm->ext_func_names) {
+        vm->free_fn(vm->ext_func_names);
+    }
+    vm->free_fn(vm);
 }
 
 int
@@ -138,7 +172,7 @@ ubpf_load(struct ubpf_vm *vm, const void *code, uint32_t code_len, char **errmsg
         return -1;
     }
 
-    vm->insts = malloc(code_len);
+    vm->insts = vm->zmalloc_fn(vm->zmalloc_cookie, code_len);
     if (vm->insts == NULL) {
         *errmsg = ubpf_error("out of memory");
         return -1;

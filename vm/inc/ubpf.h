@@ -33,7 +33,28 @@
 struct ubpf_vm;
 typedef uint64_t (*ubpf_jit_fn)(void *mem, size_t mem_len);
 
-struct ubpf_vm *ubpf_create(void);
+typedef void *(*ubpf_zmalloc_fn)(void *cookie, size_t size);
+typedef void *(*ubpf_free_fn)(void *ptr);
+
+/*
+ * Create ubmf vm with specified allocator and deallocator
+ *
+ * Zmalloc_cookie and pointers to zmalloc and free functions are stored
+ * in the ubpf_vm struct.
+ * Zmalloc function is invoked for allocation with zmalloc_cookie passed
+ * as parameter; free function is invoked for deallocation.
+ */
+struct ubpf_vm *
+ubpf_create_ext(void *zmalloc_cookie,
+                ubpf_zmalloc_fn zmalloc_fn,
+                ubpf_free_fn free_fn);
+
+/*
+ * Create ubmf vm with default allocator and deallocator
+ */
+struct ubpf_vm *
+ubpf_create(void);
+
 void ubpf_destroy(struct ubpf_vm *vm);
 
 /*

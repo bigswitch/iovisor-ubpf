@@ -600,8 +600,12 @@ ubpf_translate(struct ubpf_vm *vm, uint8_t * buffer, size_t * size, char **errms
     state.offset = 0;
     state.size = *size;
     state.buf = buffer;
-    state.pc_locs = calloc(UBPF_MAX_INSTS+1, sizeof(state.pc_locs[0]));
-    state.jumps = calloc(UBPF_MAX_INSTS, sizeof(state.jumps[0]));
+
+    state.pc_locs =
+        vm->zmalloc_fn(vm->zmalloc_cookie,
+                       (UBPF_MAX_INSTS+1)*sizeof(state.pc_locs[0]));
+    state.jumps = vm->zmalloc_fn(vm->zmalloc_cookie,
+                                 (UBPF_MAX_INSTS*sizeof(state.jumps[0])));
     state.num_jumps = 0;
 
     if (translate(vm, &state, errmsg) < 0) {
@@ -614,8 +618,8 @@ ubpf_translate(struct ubpf_vm *vm, uint8_t * buffer, size_t * size, char **errms
     *size = state.offset;
 
 out:
-    free(state.pc_locs);
-    free(state.jumps);
+    vm->free_fn(state.pc_locs);
+    vm->free_fn(state.jumps);
     return result;
 }
 
@@ -638,7 +642,7 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
     }
 
     jitted_size = 65536;
-    buffer = calloc(jitted_size, 1);
+    buffer = vm->zmalloc_fn(vm->zmalloc_cookie, jitted_size);
 
     if (ubpf_translate(vm, buffer, &jitted_size, errmsg) < 0) {
         goto out;
@@ -661,7 +665,7 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
     vm->jitted_size = jitted_size;
 
 out:
-    free(buffer);
+    vm->free_fn(buffer);
     if (jitted && vm->jitted == NULL) {
         munmap(jitted, jitted_size);
     }
